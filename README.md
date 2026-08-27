@@ -48,23 +48,11 @@
 
 ---
 
-## 📊 GitHub Stats
-
-<div align="center">
-
-<img height="165" src="https://github-readme-stats.vercel.app/api?username=Zoey-0314&show_icons=true&theme=transparent&hide_border=true&title_color=0969DA&icon_color=58A6FF&text_color=57606A"/>
-
-<img height="165" src="https://github-readme-stats.vercel.app/api/top-langs/?username=Zoey-0314&layout=compact&theme=transparent&hide_border=true&title_color=0969DA&text_color=57606A"/>
-
-</div>
-
----
-
 ## 📈 Contributions
 
 <div align="center">
 
-<img src="https://github-readme-activity-graph.vercel.app/graph?username=Zoey-0314&bg_color=ffffff&color=0969da&line=58a6ff&point=0969da&area=true&hide_border=true"/>
+<img src="https://ghchart.rshah.org/0969DA/Zoey-0314" alt="Zoey's GitHub contribution heatmap" width="100%"/>
 
 </div>
 
