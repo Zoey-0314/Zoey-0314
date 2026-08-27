@@ -1,0 +1,164 @@
+name: Generate contribution heatmap
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 0 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/contribution-heatmap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate SVG
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const query = `
+              query($login: String!) {
+                user(login: $login) {
+                  contributionsCollection {
+                    contributionCalendar {
+                      totalContributions
+                      weeks {
+                        contributionDays {
+                          date
+                          contributionCount
+                          weekday
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query, { login: 'Zoey-0314' });
+            const calendar = result.user.contributionsCollection.contributionCalendar;
+            const weeks = calendar.weeks;
+
+            const palette = [
+              '#D0EFF5',
+              '#A8D8F9',
+              '#4FA9EB',
+              '#1E7BD3',
+              '#255DBA',
+              '#1543AC',
+              '#15347B'
+            ];
+
+            const positive = weeks
+              .flatMap(w => w.contributionDays)
+              .map(d => d.contributionCount)
+              .filter(c => c > 0)
+              .sort((a, b) => a - b);
+
+            const quantile = p => {
+              if (!positive.length) return 1;
+              const index = Math.min(positive.length - 1, Math.floor((positive.length - 1) * p));
+              return positive[index];
+            };
+
+            const thresholds = [
+              quantile(1 / 6),
+              quantile(2 / 6),
+              quantile(3 / 6),
+              quantile(4 / 6),
+              quantile(5 / 6)
+            ];
+
+            function colorFor(count) {
+              if (count === 0) return palette[0];
+              let level = 1;
+              for (const t of thresholds) {
+                if (count > t) level++;
+              }
+              return palette[Math.min(level, 6)];
+            }
+
+            const cell = 11;
+            const gap = 3;
+            const step = cell + gap;
+            const left = 32;
+            const top = 28;
+            const width = left + weeks.length * step + 8;
+            const height = top + 7 * step + 26;
+
+            const escapeXml = value => String(value)
+              .replaceAll('&', '&amp;')
+              .replaceAll('<', '&lt;')
+              .replaceAll('>', '&gt;')
+              .replaceAll('"', '&quot;');
+
+            let cells = '';
+            let monthLabels = '';
+            let lastMonth = -1;
+
+            weeks.forEach((week, wi) => {
+              const first = week.contributionDays[0];
+              if (first) {
+                const month = new Date(`${first.date}T00:00:00Z`).getUTCMonth();
+                if (month !== lastMonth) {
+                  const label = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' })
+                    .format(new Date(`${first.date}T00:00:00Z`));
+                  monthLabels += `<text x="${left + wi * step}" y="14" class="month">${label}</text>`;
+                  lastMonth = month;
+                }
+              }
+
+              week.contributionDays.forEach(day => {
+                const x = left + wi * step;
+                const y = top + day.weekday * step;
+                const fill = colorFor(day.contributionCount);
+                const title = `${day.date}: ${day.contributionCount} contribution${day.contributionCount === 1 ? '' : 's'}`;
+                cells += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2" fill="${fill}"><title>${escapeXml(title)}</title></rect>`;
+              });
+            });
+
+            const svg = `<?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Zoey's GitHub contribution heatmap">
+              <style>
+                .label { font: 10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #4FA9EB; }
+                .month { font: 10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #255DBA; }
+                .total { font: 11px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #15347B; font-weight: 600; }
+                @media (prefers-color-scheme: dark) {
+                  .label { fill: #A8D8F9; }
+                  .month { fill: #4FA9EB; }
+                  .total { fill: #D0EFF5; }
+                }
+              </style>
+              ${monthLabels}
+              <text x="4" y="${top + step * 2 - 2}" class="label">Mon</text>
+              <text x="4" y="${top + step * 4 - 2}" class="label">Wed</text>
+              <text x="4" y="${top + step * 6 - 2}" class="label">Fri</text>
+              ${cells}
+              <text x="${left}" y="${height - 7}" class="total">${calendar.totalContributions} contributions in the last year</text>
+            </svg>`;
+
+            fs.mkdirSync(path.join(process.cwd(), 'assets'), { recursive: true });
+            fs.writeFileSync(path.join(process.cwd(), 'assets', 'contribution-heatmap.svg'), svg);
+
+      - name: Commit generated heatmap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/contribution-heatmap.svg
+          if git diff --cached --quiet; then
+            echo "No heatmap changes to commit."
+          else
+            git commit -m "Update contribution heatmap"
+            git push
+          fi
